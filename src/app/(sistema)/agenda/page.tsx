@@ -2,7 +2,7 @@
 
 
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import Sidebar from "../../../components/Sidebar";
 
@@ -96,73 +96,44 @@ export default function AgendaPage() {
 
 
 
-  const [mesAtual, setMesAtual] = useState(8);
-
-  const [anoAtual, setAnoAtual] = useState(2026);
-
+  const [mesAtual, setMesAtual] = useState(() => new Date().getMonth());
+  const [anoAtual, setAnoAtual] = useState(() => new Date().getFullYear());
   const [diaSelecionado, setDiaSelecionado] = useState<number | null>(null);
+  const [compromissos, setCompromissos] = useState<Compromisso[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+  const [excluindoId, setExcluindoId] = useState<number | null>(null);
+  const [erro, setErro] = useState("");
 
+  // Contrato provisório: GET/POST /compromissos e PATCH/DELETE /compromissos/:id.
+  // Ajustar os caminhos e os campos quando o backend NestJS definir sua API.
+  const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").replace(/\/$/, "");
 
-
-  const [compromissos, setCompromissos] = useState<Compromisso[]>([
-
-    {
-
-      id: 1,
-
-      titulo: "Terapia ocupacional",
-
-      local: "Clínica Bem Cuidar",
-
-      data: "2026-09-10",
-
-      horario: "14:00",
-
-      observacoes: "Levar os relatórios da última consulta.",
-
-      tipo: "Terapia",
-
-    },
-
-    {
-
-      id: 2,
-
-      titulo: "Fonoaudióloga",
-
-      local: "Consulta semanal",
-
-      data: "2026-09-12",
-
-      horario: "10:30",
-
-      observacoes: "",
-
-      tipo: "Terapia",
-
-    },
-
-    {
-
-      id: 3,
-
-      titulo: "Consulta médica",
-
-      local: "Pediatra",
-
-      data: "2026-09-15",
-
-      horario: "09:00",
-
-      observacoes: "Levar exames anteriores.",
-
-      tipo: "Consulta",
-
-    },
-
-  ]);
-
-
+  useEffect(() => {
+    const controller = new AbortController();
+    async function carregarCompromissos() {
+      setCarregando(true);
+      setErro("");
+      try {
+        const resposta = await fetch(`${apiUrl}/compromissos`, {
+          signal: controller.signal,
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!resposta.ok) throw new Error(`Falha ao carregar compromissos (${resposta.status}).`);
+        const resultado: unknown = await resposta.json();
+        if (!Array.isArray(resultado)) throw new Error("Formato de resposta inesperado da API.");
+        setCompromissos(resultado as Compromisso[]);
+      } catch (falha) {
+        if (controller.signal.aborted) return;
+        setErro(falha instanceof Error ? falha.message : "Não foi possível acessar a agenda.");
+      } finally {
+        if (!controller.signal.aborted) setCarregando(false);
+      }
+    }
+    void carregarCompromissos();
+    return () => controller.abort();
+  }, [apiUrl]);
 
   function limparFormulario() {
 
@@ -218,91 +189,42 @@ export default function AgendaPage() {
 
 
 
-  function salvarCompromisso() {
-
-    if (!titulo || !data || !horario) {
-
+  async function salvarCompromisso() {
+    if (!titulo.trim() || !data || !horario) {
       alert("Preencha o compromisso, a data e o horário.");
-
       return;
-
     }
-
-
-
-    if (idEditando !== null) {
-
-      setCompromissos((listaAtual) =>
-
-        listaAtual.map((compromisso) =>
-
-          compromisso.id === idEditando
-
-            ? {
-
-                ...compromisso,
-
-                titulo,
-
-                local,
-
-                data,
-
-                horario,
-
-                observacoes,
-
-                tipo,
-
-              }
-
-            : compromisso
-
-        )
-
+    setSalvando(true);
+    setErro("");
+    const payload = {
+      titulo: titulo.trim(), local: local.trim(), data, horario,
+      observacoes: observacoes.trim(), tipo,
+    };
+    try {
+      const editando = idEditando !== null;
+      const resposta = await fetch(
+        editando ? `${apiUrl}/compromissos/${idEditando}` : `${apiUrl}/compromissos`,
+        {
+          method: editando ? "PATCH" : "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
       );
-
-    } else {
-
-      const novoCompromisso: Compromisso = {
-
-        id: Date.now(),
-
-        titulo,
-
-        local,
-
-        data,
-
-        horario,
-
-        observacoes,
-
-        tipo,
-
-      };
-
-
-
-      setCompromissos((listaAtual) => [
-
-        ...listaAtual,
-
-        novoCompromisso,
-
-      ]);
-
+      if (!resposta.ok) throw new Error(`Não foi possível salvar o compromisso (${resposta.status}).`);
+      const salvo: Compromisso = await resposta.json();
+      if (salvo == null || salvo.id == null) throw new Error("A API não retornou o compromisso salvo com ID.");
+      setCompromissos((lista) => editando
+        ? lista.map((item) => item.id === idEditando ? salvo : item)
+        : [...lista, salvo]);
+      limparFormulario();
+      setFormularioAberto(false);
+    } catch (falha) {
+      setErro(falha instanceof Error ? falha.message : "Erro ao salvar compromisso.");
+    } finally {
+      setSalvando(false);
     }
-
-
-
-    limparFormulario();
-
-    setFormularioAberto(false);
-
   }
-
-
 
   function editarCompromisso(compromisso: Compromisso) {
 
@@ -310,13 +232,13 @@ export default function AgendaPage() {
 
     setTitulo(compromisso.titulo);
 
-    setLocal(compromisso.local);
+    setLocal(compromisso.local || "");
 
-    setData(compromisso.data);
+    setData(compromisso.data.slice(0, 10));
 
     setHorario(compromisso.horario);
 
-    setObservacoes(compromisso.observacoes);
+    setObservacoes(compromisso.observacoes || "");
 
     setTipo(compromisso.tipo);
 
@@ -336,33 +258,26 @@ export default function AgendaPage() {
 
 
 
-  function excluirCompromisso(id: number) {
-
-    const confirmar = window.confirm(
-
-      "Deseja realmente excluir este compromisso?"
-
-    );
-
-
-
-    if (!confirmar) return;
-
-
-
-    setCompromissos((listaAtual) =>
-
-      listaAtual.filter((compromisso) => compromisso.id !== id)
-
-    );
-
+  async function excluirCompromisso(id: number) {
+    if (!window.confirm("Deseja realmente excluir este compromisso?")) return;
+    setExcluindoId(id);
+    setErro("");
+    try {
+      const resposta = await fetch(`${apiUrl}/compromissos/${id}`, {
+        method: "DELETE", credentials: "include",
+      });
+      if (!resposta.ok) throw new Error(`Não foi possível excluir o compromisso (${resposta.status}).`);
+      setCompromissos((lista) => lista.filter((item) => item.id !== id));
+    } catch (falha) {
+      setErro(falha instanceof Error ? falha.message : "Erro ao excluir compromisso.");
+    } finally {
+      setExcluindoId(null);
+    }
   }
-
-
 
   function formatarData(dataCompromisso: string) {
 
-    const [ano, mes, dia] = dataCompromisso.split("-");
+    const [ano, mes, dia] = dataCompromisso.slice(0, 10).split("-");
 
 
 
@@ -446,7 +361,7 @@ export default function AgendaPage() {
 
     return compromissos.some(
 
-      (compromisso) => compromisso.data === dataProcurada
+      (compromisso) => compromisso.data.slice(0, 10) === dataProcurada
 
     );
 
@@ -528,7 +443,7 @@ export default function AgendaPage() {
 
         (compromisso) =>
 
-          compromisso.data === dataSelecionada
+          compromisso.data.slice(0, 10) === dataSelecionada
 
       );
 
@@ -538,7 +453,7 @@ export default function AgendaPage() {
 
     return compromissosOrdenados.filter((compromisso) => {
 
-      const [ano, mes] = compromisso.data.split("-");
+      const [ano, mes] = compromisso.data.slice(0, 10).split("-");
 
 
 
@@ -717,6 +632,12 @@ export default function AgendaPage() {
           </header>
 
 
+
+          {erro && (
+            <div role="alert" className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+              {erro}
+            </div>
+          )}
 
           {/* RESUMO */}
 
@@ -1056,7 +977,8 @@ export default function AgendaPage() {
 
                     type="button"
 
-                    onClick={salvarCompromisso}
+                    onClick={() => void salvarCompromisso()}
+                  disabled={salvando}
 
                     className="rounded-full bg-[var(--elara-terracota)] px-6 py-3 text-sm font-extrabold text-white transition hover:bg-[var(--elara-terracota-hover)]"
 
@@ -1356,7 +1278,9 @@ export default function AgendaPage() {
 
 
 
-              {compromissosVisiveis.length === 0 ? (
+              {carregando ? (
+                <p role="status" className="rounded-[30px] bg-[var(--elara-superficie)] p-8 text-sm">Carregando compromissos...</p>
+              ) : compromissosVisiveis.length === 0 ? (
 
                 <div className="rounded-[30px] border border-dashed border-[var(--elara-borda-forte)] bg-[var(--elara-superficie)]/60 px-6 py-14 text-center">
 
@@ -1584,7 +1508,7 @@ export default function AgendaPage() {
 
                               >
 
-                                Excluir
+                                {excluindoId === compromisso.id ? "Excluindo..." : "Excluir"}
 
                               </button>
 
