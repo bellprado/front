@@ -2,13 +2,32 @@
 
 
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import Link from "next/link";
 
 import Sidebar from "../../../components/Sidebar";
 
 
+
+type Crianca = {
+  id?: string | number;
+  nome: string;
+  dataNascimento: string;
+  escola?: string;
+  responsavel: string;
+  diagnostico?: string;
+  cid?: string;
+  alergias?: string;
+  terapias?: string;
+  observacoes?: string;
+};
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+
+function cid10Valido(valor: string) {
+  return /^[A-Z][0-9]{2}(?:\.[0-9A-Z]{1,2})?$/.test(valor);
+}
 
 export default function CriancaPage() {
 
@@ -38,27 +57,100 @@ export default function CriancaPage() {
 
 
 
-  function salvarInformacoes() {
+  const [criancaId, setCriancaId] = useState<string | number | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [carregando, setCarregando] = useState(Boolean(API_URL));
+  const [erro, setErro] = useState("");
 
-    if (!nome || !dataNascimento || !responsavel) {
-
-      alert(
-
-        "Preencha pelo menos o nome, a data de nascimento e o responsável principal."
-
-      );
-
-      return;
-
+  useEffect(() => {
+    if (!API_URL) return;
+    let ativo = true;
+    async function carregarCrianca() {
+      try {
+        // Contrato provisório: GET /criancas retorna uma lista.
+        const resposta = await fetch(`${API_URL}/criancas`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!resposta.ok) throw new Error("Não foi possível consultar o cadastro.");
+        const retorno: unknown = await resposta.json();
+        const lista = Array.isArray(retorno)
+          ? retorno
+          : retorno && typeof retorno === "object" && "data" in retorno && Array.isArray(retorno.data)
+            ? retorno.data
+            : [];
+        const primeira = lista[0] as Crianca | undefined;
+        if (!ativo || !primeira) return;
+        setCriancaId(primeira.id ?? null);
+        setNome(primeira.nome ?? "");
+        setDataNascimento(primeira.dataNascimento?.slice(0, 10) ?? "");
+        setEscola(primeira.escola ?? "");
+        setResponsavel(primeira.responsavel ?? "");
+        setDiagnostico(primeira.diagnostico ?? "");
+        setCid(primeira.cid ?? "");
+        setAlergias(primeira.alergias ?? "");
+        setTerapias(primeira.terapias ?? "");
+        setObservacoes(primeira.observacoes ?? "");
+        setDadosSalvos(true);
+      } catch (falha) {
+        if (ativo) setErro(falha instanceof Error ? falha.message : "Erro ao carregar cadastro.");
+      } finally {
+        if (ativo) setCarregando(false);
+      }
     }
+    void carregarCrianca();
+    return () => { ativo = false; };
+  }, []);
 
-
-
-    setDadosSalvos(true);
-
+  async function salvarInformacoes() {
+    setErro("");
+    if (!nome.trim() || !dataNascimento || !responsavel.trim()) {
+      setErro("Preencha o nome, a data de nascimento e o responsável principal.");
+      return;
+    }
+    const nascimento = new Date(`${dataNascimento}T00:00:00`);
+    if (Number.isNaN(nascimento.getTime()) || nascimento > new Date()) {
+      setErro("Informe uma data de nascimento válida, que não seja futura.");
+      return;
+    }
+    const cidNormalizado = cid.trim().toUpperCase();
+    if (cidNormalizado && !cid10Valido(cidNormalizado)) {
+      setErro("Informe um CID-10 válido (ex.: F84.0) ou deixe o campo vazio.");
+      return;
+    }
+    setCid(cidNormalizado);
+    if (!API_URL) {
+      setErro("O cadastro ainda não pode ser salvo: configure NEXT_PUBLIC_API_URL e a API de crianças. Nenhum dado foi armazenado.");
+      return;
+    }
+    const dados: Crianca = {
+      nome: nome.trim(), dataNascimento, escola: escola.trim(),
+      responsavel: responsavel.trim(), diagnostico: diagnostico.trim(),
+      cid: cidNormalizado, alergias: alergias.trim(),
+      terapias: terapias.trim(), observacoes: observacoes.trim(),
+    };
+    setSalvando(true);
+    try {
+      // Contrato provisório: POST /criancas e PATCH /criancas/:id.
+      const resposta = await fetch(
+        criancaId === null ? `${API_URL}/criancas` : `${API_URL}/criancas/${encodeURIComponent(String(criancaId))}`,
+        {
+          method: criancaId === null ? "POST" : "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(dados),
+        }
+      );
+      if (!resposta.ok) throw new Error("Não foi possível salvar. Verifique a conexão e a API.");
+      const retorno: Crianca | null = await resposta.json().catch(() => null);
+      if (retorno?.id !== undefined) setCriancaId(retorno.id);
+      setDadosSalvos(true);
+    } catch (falha) {
+      setErro(falha instanceof Error ? falha.message : "Erro ao salvar informações.");
+    } finally {
+      setSalvando(false);
+    }
   }
-
-
 
   function editarInformacoes() {
 
@@ -205,6 +297,13 @@ export default function CriancaPage() {
           </header>
 
 
+
+          {carregando && <p role="status" className="mb-5 text-sm">Carregando informações...</p>}
+          {erro && (
+            <p role="alert" className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+              {erro}
+            </p>
+          )}
 
           {!dadosSalvos ? (
 
@@ -454,7 +553,11 @@ export default function CriancaPage() {
 
                       value={cid}
 
-                      onChange={(e) => setCid(e.target.value)}
+                      onChange={(e) => setCid(e.target.value.toUpperCase())}
+
+                      maxLength={6}
+
+                      aria-describedby="cid-ajuda"
 
                       placeholder="Ex.: F84.0"
 
@@ -464,9 +567,9 @@ export default function CriancaPage() {
 
 
 
-                    <p className="mt-1.5 text-[10px] leading-4 text-[#929EA2]">
+                    <p id="cid-ajuda" className="mt-1.5 text-[10px] leading-4 text-[#929EA2]">
 
-                      Campo opcional. Informe apenas se desejar.
+                      Campo opcional. Informe o código CID-10, se houver (ex.: F84.0).
 
                     </p>
 
@@ -574,11 +677,13 @@ export default function CriancaPage() {
 
                     onClick={salvarInformacoes}
 
+                    disabled={salvando || carregando}
+
                     className="rounded-full bg-[var(--elara-terracota)] px-7 py-3.5 text-sm font-extrabold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#CA7059]"
 
                   >
 
-                    Salvar informações
+                    {salvando ? "Salvando..." : "Salvar informações"}
 
                   </button>
 
