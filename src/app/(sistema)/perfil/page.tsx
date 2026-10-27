@@ -7,14 +7,37 @@ type Usuario = {
   nome?: string;
   email?: string;
   telefone?: string;
+  cpf?: string;
   relacao?: string;
   logado?: boolean;
 };
+
+function formatarCpf(valor: string) {
+  const numeros = valor.replace(/\D/g, "").slice(0, 11);
+  return numeros.replace(/^(\d{3})(\d)/, "$1.$2")
+    .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/\.(\d{3})(\d)/, ".$1-$2");
+}
+
+function cpfValido(valor: string) {
+  const cpf = valor.replace(/\D/g, "");
+  if (!/^\d{11}$/.test(cpf) || /^(\d)\1{10}$/.test(cpf)) return false;
+  for (let tamanho = 9; tamanho < 11; tamanho++) {
+    let soma = 0;
+    for (let i = 0; i < tamanho; i++) soma += Number(cpf[i]) * (tamanho + 1 - i);
+    const digito = (soma * 10) % 11 % 10;
+    if (digito !== Number(cpf[tamanho])) return false;
+  }
+  return true;
+}
 
 export default function PerfilPage() {
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
   const [telefone, setTelefone] = useState("");
+  const [cpf, setCpf] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
   const [relacao, setRelacao] = useState("Responsável");
 
   const [editando, setEditando] = useState(false);
@@ -50,6 +73,27 @@ export default function PerfilPage() {
     setCarregando(false);
   }, []);
 
+  useEffect(() => {
+    const url = process.env.NEXT_PUBLIC_API_URL;
+    if (!url) return;
+    const controlador = new AbortController();
+    async function carregarCpf() {
+      try {
+        const resposta = await fetch(`${url!.replace(/\/$/, "")}/perfil`, {
+          credentials: "include",
+          signal: controlador.signal,
+        });
+        if (!resposta.ok) return;
+        const dados: Usuario = await resposta.json();
+        if (dados.cpf) setCpf(formatarCpf(dados.cpf));
+      } catch {
+        // A API pode não estar disponível durante o desenvolvimento.
+      }
+    }
+    void carregarCpf();
+    return () => controlador.abort();
+  }, []);
+
   function iniciarEdicao() {
     setDadosOriginais({
       nome,
@@ -60,10 +104,11 @@ export default function PerfilPage() {
     });
 
     setMensagem("");
+    setErro("");
     setEditando(true);
   }
 
-  function salvarPerfil() {
+  async function salvarPerfil() {
     if (!nome.trim()) {
       alert("Digite seu nome.");
       return;
@@ -79,6 +124,13 @@ export default function PerfilPage() {
       return;
     }
 
+    if (cpf.trim() && !cpfValido(cpf)) {
+      setErro("Digite um CPF válido.");
+      return;
+    }
+
+    setErro("");
+    setSalvando(true);
     const usuarioAtualizado: Usuario = {
       nome: nome.trim(),
       email: email.trim(),
@@ -87,14 +139,34 @@ export default function PerfilPage() {
       logado: true,
     };
 
-    localStorage.setItem(
-      "elara_usuario",
-      JSON.stringify(usuarioAtualizado)
-    );
+    // O CPF não deve ser armazenado no localStorage.
+    const url = process.env.NEXT_PUBLIC_API_URL;
+    if (cpf.trim() && !url) {
+      setErro("O CPF não pode ser salvo enquanto a API do perfil não estiver configurada.");
+      setSalvando(false);
+      return;
+    }
+    if (url) {
+      try {
+        const resposta = await fetch(`${url.replace(/\/$/, "")}/perfil`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...usuarioAtualizado, cpf: cpf.replace(/\D/g, "") || null }),
+        });
+        if (!resposta.ok) throw new Error("Falha ao salvar perfil na API.");
+      } catch {
+        setErro("Não foi possível salvar na API. Nenhuma alteração foi confirmada.");
+        setSalvando(false);
+        return;
+      }
+    }
+    localStorage.setItem("elara_usuario", JSON.stringify(usuarioAtualizado));
 
     setDadosOriginais(usuarioAtualizado);
     setEditando(false);
-    setMensagem("Perfil atualizado com sucesso!");
+    setMensagem(url ? "Perfil atualizado com sucesso!" : "Dados básicos atualizados neste navegador. A sincronização com a API ainda não está disponível.");
+    setSalvando(false);
   }
 
   function cancelarEdicao() {
@@ -103,6 +175,7 @@ export default function PerfilPage() {
     setTelefone(dadosOriginais.telefone || "");
     setRelacao(dadosOriginais.relacao || "Responsável");
 
+    setErro("");
     setMensagem("");
     setEditando(false);
   }
@@ -142,6 +215,12 @@ export default function PerfilPage() {
               Consulte e atualize as informações da sua conta no ELARA.
             </p>
           </div>
+
+          {erro && (
+            <div role="alert" className="mt-8 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
+              {erro}
+            </div>
+          )}
 
           {mensagem && (
             <div className="mt-8 rounded-2xl bg-green-50 p-4">
@@ -200,6 +279,11 @@ export default function PerfilPage() {
                   <p className="mt-2 break-words font-bold text-[var(--elara-grafite)]">
                     {email || "Não informado"}
                   </p>
+                </div>
+
+                <div className="rounded-2xl bg-[var(--elara-offwhite)] p-5">
+                  <p className="text-sm font-semibold text-[var(--elara-azul)]">CPF</p>
+                  <p className="mt-2 font-bold text-[var(--elara-grafite)]">{cpf || "Não informado"}</p>
                 </div>
 
                 <div className="rounded-2xl bg-[var(--elara-offwhite)] p-5">
@@ -277,6 +361,22 @@ export default function PerfilPage() {
                 </div>
 
                 <div>
+                  <label htmlFor="cpf" className="mb-2 block font-semibold">CPF</label>
+                  <input
+                    id="cpf"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    maxLength={14}
+                    value={cpf}
+                    onChange={(event) => setCpf(formatarCpf(event.target.value))}
+                    placeholder="000.000.000-00"
+                    className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-[var(--elara-azul)]"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">O CPF será enviado somente à API segura do perfil.</p>
+                </div>
+
+                <div>
                   <label
                     htmlFor="telefone"
                     className="mb-2 block font-semibold"
@@ -347,9 +447,10 @@ export default function PerfilPage() {
                 <button
                   type="button"
                   onClick={salvarPerfil}
+                  disabled={salvando}
                   className="rounded-full bg-[var(--elara-terracota)] px-6 py-3 font-bold text-white"
                 >
-                  Salvar alterações
+                  {salvando ? "Salvando..." : "Salvar alterações"}
                 </button>
 
                 <button
