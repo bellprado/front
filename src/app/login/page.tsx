@@ -282,17 +282,12 @@ export default function LoginPage() {
                   Senha
                 </label>
 
-                <button
-                  type="button"
+                <Link
+                  href="/esqueci-senha"
                   className="text-xs font-extrabold text-[#7FA2B8] transition hover:text-[#D97D64]"
-                  onClick={() =>
-                    alert(
-                      "A recuperação de senha será conectada ao backend posteriormente."
-                    )
-                  }
                 >
                   Esqueci minha senha
-                </button>
+                </Link>
               </div>
 
               <div className="relative">
