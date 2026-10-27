@@ -17,9 +17,9 @@ export default function CadastroPage() {
     useState(false);
   const [carregando, setCarregando] = useState(false);
 
-  function criarConta(event: FormEvent<HTMLFormElement>) {
+  async function criarConta(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
+    if (carregando) return;
     setErro("");
 
     if (!nome.trim()) {
@@ -27,18 +27,9 @@ export default function CadastroPage() {
       return;
     }
 
-    if (!email.trim()) {
-      setErro("Digite seu e-mail.");
-      return;
-    }
-
-    if (!email.includes("@")) {
+    const emailNormalizado = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNormalizado)) {
       setErro("Digite um e-mail válido.");
-      return;
-    }
-
-    if (!senha.trim()) {
-      setErro("Digite uma senha.");
       return;
     }
 
@@ -47,53 +38,49 @@ export default function CadastroPage() {
       return;
     }
 
-    if (!confirmarSenha.trim()) {
-      setErro("Confirme sua senha.");
-      return;
-    }
-
     if (senha !== confirmarSenha) {
       setErro("As senhas não são iguais.");
       return;
     }
 
-    const contaExistente = localStorage.getItem("elara_conta");
-
-    if (contaExistente) {
-      try {
-        const conta = JSON.parse(contaExistente);
-
-        if (
-          conta.email?.toLowerCase() ===
-          email.trim().toLowerCase()
-        ) {
-          setErro(
-            "Já existe uma conta cadastrada com este e-mail."
-          );
-          return;
-        }
-      } catch {
-        localStorage.removeItem("elara_conta");
-      }
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+    if (!apiUrl) {
+      setErro("O cadastro ainda não está disponível: configure NEXT_PUBLIC_API_URL e conecte o backend.");
+      return;
     }
 
     setCarregando(true);
+    try {
+      // Contrato provisório: confirmar rota e campos com o backend.
+      const resposta = await fetch(`${apiUrl}/auth/cadastro`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nome: nome.trim(),
+          email: emailNormalizado,
+          senha,
+        }),
+      });
 
-    const novaConta = {
-      nome: nome.trim(),
-      email: email.trim(),
-      senha,
-      tipo: "responsavel",
-    };
+      if (!resposta.ok) {
+        if (resposta.status === 409) {
+          setErro("Já existe uma conta cadastrada com este e-mail.");
+        } else if (resposta.status === 400 || resposta.status === 422) {
+          setErro("Não foi possível validar os dados. Confira as informações e tente novamente.");
+        } else {
+          setErro("Não foi possível criar a conta. Tente novamente mais tarde.");
+        }
+        return;
+      }
 
-    localStorage.setItem(
-      "elara_conta",
-      JSON.stringify(novaConta)
-    );
-
-    localStorage.removeItem("elara_usuario");
-
-    router.push("/login");
+      setSenha("");
+      setConfirmarSenha("");
+      router.push("/login?cadastro=sucesso");
+    } catch {
+      setErro("Não foi possível conectar ao servidor. Verifique se a API está disponível.");
+    } finally {
+      setCarregando(false);
+    }
   }
 
   const senhaTemTamanho = senha.length >= 6;
