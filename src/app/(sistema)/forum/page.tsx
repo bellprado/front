@@ -1,12 +1,13 @@
  "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Sidebar from "../../../components/Sidebar";
 
 type Comentario = {
   id: number;
   autor: string;
   mensagem: string;
+  criadoEm: string;
 };
 
 type Publicacao = {
@@ -16,7 +17,21 @@ type Publicacao = {
   conteudo: string;
   autor: string;
   comentarios: Comentario[];
+  criadoEm: string;
 };
+
+const LIMITE_EDICAO_MS = 15 * 60 * 1000;
+const CHAVE_ARMAZENAMENTO = "elara_forum_rascunho_local";
+
+function podeEditar(criadoEm: string, agora: number) {
+  const criado = new Date(criadoEm).getTime();
+  return Number.isFinite(criado) && agora >= criado && agora - criado < LIMITE_EDICAO_MS;
+}
+
+function tempoRestante(criadoEm: string, agora: number) {
+  const restante = Math.max(0, LIMITE_EDICAO_MS - (agora - new Date(criadoEm).getTime()));
+  return `${Math.ceil(restante / 60000)} min`;
+}
 
 export default function ForumPage() {
   const usuarioAtual = "Você";
@@ -42,55 +57,40 @@ export default function ForumPage() {
 
   const [textoComentarioEditando, setTextoComentarioEditando] = useState("");
 
-  const [publicacoes, setPublicacoes] = useState<Publicacao[]>([
-    {
-      id: 1,
-      categoria: "Rotina",
-      titulo: "Como vocês organizam os horários das terapias?",
-      conteudo:
-        "Queria saber como outros responsáveis organizam consultas, terapias e compromissos durante a semana.",
-      autor: "Ana",
-      comentarios: [
-        {
-          id: 101,
-          autor: "Marina",
-          mensagem:
-            "Aqui eu uso uma agenda semanal e separo cada terapia por dia.",
-        },
-        {
-          id: 102,
-          autor: "Juliana",
-          mensagem:
-            "Eu tento deixar os compromissos sempre nos mesmos horários. Isso ajudou bastante na rotina.",
-        },
-      ],
-    },
-    {
-      id: 2,
-      categoria: "Escola",
-      titulo: "Adaptação na escola",
-      conteudo:
-        "Alguém já passou pelo processo de adaptação escolar? Gostaria de trocar experiências.",
-      autor: "Camila",
-      comentarios: [
-        {
-          id: 201,
-          autor: "Renata",
-          mensagem:
-            "No começo foi difícil, mas conversar bastante com a professora ajudou muito.",
-        },
-      ],
-    },
-    {
-      id: 3,
-      categoria: "Apoio",
-      titulo: "Indicações de atividades para fazer em casa",
-      conteudo:
-        "Quais atividades vocês costumam fazer em casa para tornar a rotina mais leve e organizada?",
-      autor: "Patrícia",
-      comentarios: [],
-    },
-  ]);
+  const [publicacoes, setPublicacoes] = useState<Publicacao[]>([]);
+  const [carregado, setCarregado] = useState(false);
+  const [agora, setAgora] = useState(() => Date.now());
+
+  // Protótipo local. Substituir por GET/POST/PATCH/DELETE da API quando disponível.
+  useEffect(() => {
+    try {
+      const salvo = window.localStorage.getItem(CHAVE_ARMAZENAMENTO);
+      if (salvo) {
+        const dados: unknown = JSON.parse(salvo);
+        if (Array.isArray(dados)) {
+          setPublicacoes(dados as Publicacao[]);
+        }
+      }
+    } catch {
+      // Se o armazenamento estiver inválido, inicia com lista vazia.
+    } finally {
+      setCarregado(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!carregado) return;
+    try {
+      window.localStorage.setItem(CHAVE_ARMAZENAMENTO, JSON.stringify(publicacoes));
+    } catch {
+      // A interface continua funcionando caso o armazenamento esteja indisponível.
+    }
+  }, [publicacoes, carregado]);
+
+  useEffect(() => {
+    const intervalo = window.setInterval(() => setAgora(Date.now()), 15000);
+    return () => window.clearInterval(intervalo);
+  }, []);
 
   function limparFormulario() {
     setCategoria("");
@@ -116,6 +116,12 @@ export default function ForumPage() {
     }
 
     if (idEditando !== null) {
+      const original = publicacoes.find((item) => item.id === idEditando);
+      if (!original || original.autor !== usuarioAtual || !podeEditar(original.criadoEm, Date.now())) {
+        alert("O prazo de 15 minutos para editar esta publicação terminou.");
+        fecharFormulario();
+        return;
+      }
       const listaAtualizada = publicacoes.map((publicacao) =>
         publicacao.id === idEditando
           ? {
@@ -136,6 +142,7 @@ export default function ForumPage() {
         conteudo,
         autor: usuarioAtual,
         comentarios: [],
+        criadoEm: new Date().toISOString(),
       };
 
       setPublicacoes([novaPublicacao, ...publicacoes]);
@@ -146,7 +153,8 @@ export default function ForumPage() {
   }
 
   function editarPublicacao(publicacao: Publicacao) {
-    if (publicacao.autor !== usuarioAtual) {
+    if (publicacao.autor !== usuarioAtual || !podeEditar(publicacao.criadoEm, Date.now())) {
+      alert("O prazo de 15 minutos para editar esta publicação terminou.");
       return;
     }
 
@@ -210,6 +218,7 @@ export default function ForumPage() {
         id: Date.now(),
         autor: usuarioAtual,
         mensagem,
+        criadoEm: new Date().toISOString(),
       };
 
       return {
@@ -227,7 +236,8 @@ export default function ForumPage() {
   }
 
   function iniciarEdicaoComentario(comentario: Comentario) {
-    if (comentario.autor !== usuarioAtual) {
+    if (comentario.autor !== usuarioAtual || !podeEditar(comentario.criadoEm, Date.now())) {
+      alert("O prazo de 15 minutos para editar este comentário terminou.");
       return;
     }
 
@@ -244,6 +254,15 @@ export default function ForumPage() {
     publicacaoId: number,
     comentarioId: number
   ) {
+    const original = publicacoes
+      .find((item) => item.id === publicacaoId)
+      ?.comentarios.find((item) => item.id === comentarioId);
+    if (!original || original.autor !== usuarioAtual || !podeEditar(original.criadoEm, Date.now())) {
+      alert("O prazo de 15 minutos para editar este comentário terminou.");
+      cancelarEdicaoComentario();
+      return;
+    }
+
     const mensagem = textoComentarioEditando.trim();
 
     if (!mensagem) {
@@ -330,6 +349,12 @@ export default function ForumPage() {
               <p className="mt-2 max-w-3xl text-[var(--elara-grafite)]">
                 Compartilhe experiências, faça perguntas e converse com outras
                 mães e responsáveis em um espaço de apoio e troca.
+              </p>
+              <p className="mt-2 text-sm text-[var(--elara-grafite)]">
+                Publicações e respostas podem ser editadas por até 15 minutos após o envio.
+              </p>
+              <p className="mt-2 text-xs text-gray-500">
+                Versão local de demonstração: os dados ficam somente neste navegador e não são compartilhados com outros usuários.
               </p>
             </div>
 
@@ -424,6 +449,7 @@ export default function ForumPage() {
             {publicacoes.map((publicacao) => {
               const publicacaoEhMinha =
                 publicacao.autor === usuarioAtual;
+              const edicaoDisponivel = publicacaoEhMinha && podeEditar(publicacao.criadoEm, agora);
 
               return (
                 <article
@@ -469,15 +495,15 @@ export default function ForumPage() {
 
                     {publicacaoEhMinha && (
                       <>
-                        <button
+                        {edicaoDisponivel && <button
                           type="button"
                           onClick={() =>
                             editarPublicacao(publicacao)
                           }
                           className="font-bold text-[var(--elara-azul)]"
                         >
-                          Editar
-                        </button>
+                          Editar ({tempoRestante(publicacao.criadoEm, agora)})
+                        </button>}
 
                         <button
                           type="button"
@@ -523,6 +549,7 @@ export default function ForumPage() {
                               const comentarioEhMeu =
                                 comentario.autor ===
                                 usuarioAtual;
+                              const comentarioEditavel = comentarioEhMeu && podeEditar(comentario.criadoEm, agora);
 
                               return (
                                 <div
@@ -541,8 +568,7 @@ export default function ForumPage() {
                                     )}
                                   </div>
 
-                                  {comentarioEditandoId ===
-                                  comentario.id ? (
+                                  {comentarioEditandoId === comentario.id && comentarioEditavel ? (
                                     <div className="mt-4">
                                       <textarea
                                         value={
@@ -590,7 +616,7 @@ export default function ForumPage() {
 
                                       {comentarioEhMeu && (
                                         <div className="mt-4 flex gap-4">
-                                          <button
+                                          {comentarioEditavel && <button
                                             type="button"
                                             onClick={() =>
                                               iniciarEdicaoComentario(
@@ -599,8 +625,8 @@ export default function ForumPage() {
                                             }
                                             className="font-bold text-[var(--elara-azul)]"
                                           >
-                                            Editar
-                                          </button>
+                                            Editar ({tempoRestante(comentario.criadoEm, agora)})
+                                          </button>}
 
                                           <button
                                             type="button"
@@ -662,7 +688,7 @@ export default function ForumPage() {
             })}
           </div>
 
-          {publicacoes.length === 0 && (
+          {carregado && publicacoes.length === 0 && (
             <div className="mt-10 rounded-3xl bg-white p-8 text-center shadow-sm">
               <h3 className="text-xl font-bold text-[var(--elara-grafite)]">
                 Nenhuma publicação ainda
