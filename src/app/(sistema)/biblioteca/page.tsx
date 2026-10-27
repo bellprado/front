@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Sidebar from "../../../components/Sidebar";
 
 type Aba = "biblioteca" | "direitos";
@@ -22,131 +22,7 @@ type Direito = {
   orientacao: string;
 };
 
-const artigos: Artigo[] = [
-  {
-    id: 1,
-    categoria: "Desenvolvimento",
-    titulo: "Rotina e desenvolvimento infantil",
-    resumo:
-      "Entenda como uma rotina organizada pode contribuir para o desenvolvimento e o bem-estar da criança.",
-    conteudo:
-      "A organização da rotina pode ajudar a criança a compreender melhor o que acontece ao longo do dia. Horários relativamente previsíveis para atividades, refeições, descanso, escola e terapias podem trazer mais segurança e facilitar a adaptação às tarefas diárias. Cada criança possui necessidades diferentes, por isso a rotina deve ser flexível e adaptada à realidade da família.",
-  },
-  {
-    id: 2,
-    categoria: "Cuidados",
-    titulo: "Estratégias para o cotidiano",
-    resumo:
-      "Veja formas simples de organizar atividades e tornar o dia a dia mais previsível e acolhedor.",
-    conteudo:
-      "Algumas estratégias podem facilitar a rotina da família, como organizar compromissos com antecedência, usar calendários visuais, dividir tarefas maiores em pequenas etapas e registrar informações importantes. Também é importante observar quais estratégias funcionam melhor para cada criança e ajustar a rotina sempre que necessário.",
-  },
-  {
-    id: 3,
-    categoria: "Apoio",
-    titulo: "Construindo uma rede de apoio",
-    resumo:
-      "Saiba por que compartilhar responsabilidades pode ser importante para quem cuida.",
-    conteudo:
-      "Uma rede de apoio pode ser formada por familiares, amigos, profissionais, instituições e outras pessoas de confiança. Compartilhar informações e responsabilidades pode tornar a rotina mais organizada e reduzir a sobrecarga dos responsáveis. Procurar apoio não significa deixar de acompanhar a criança, mas ampliar as possibilidades de cuidado.",
-  },
-  {
-    id: 4,
-    categoria: "Escola",
-    titulo: "Comunicação entre família e escola",
-    resumo:
-      "Conheça a importância do diálogo entre responsáveis e profissionais da educação.",
-    conteudo:
-      "A comunicação entre a família e a escola pode ajudar no acompanhamento da criança. Informações sobre rotina, comportamento, necessidades e estratégias que funcionam em casa podem contribuir para o ambiente escolar. Da mesma forma, os responsáveis podem acompanhar informações importantes sobre a experiência da criança na escola.",
-  },
-  {
-    id: 5,
-    categoria: "Organização",
-    titulo: "Como organizar consultas e terapias",
-    resumo:
-      "Aprenda algumas formas de acompanhar compromissos sem perder informações importantes.",
-    conteudo:
-      "Manter consultas e terapias organizadas pode ser mais simples quando todas as informações ficam concentradas em um único lugar. Data, horário, local, profissional responsável e observações podem ser registrados antecipadamente. Também pode ser útil anotar orientações recebidas durante cada atendimento.",
-  },
-  {
-    id: 6,
-    categoria: "Cuidados",
-    titulo: "Registrando informações importantes",
-    resumo:
-      "Veja quais informações podem ajudar no acompanhamento da rotina da criança.",
-    conteudo:
-      "Registrar acontecimentos importantes pode facilitar o acompanhamento ao longo do tempo. Mudanças na rotina, observações escolares, orientações profissionais, alimentação e outros aspectos podem ser registrados de maneira organizada. Essas informações também podem ajudar durante conversas com profissionais responsáveis pelo acompanhamento da criança.",
-  },
-];
-
-const direitos: Direito[] = [
-  {
-    id: 1,
-    categoria: "Educação",
-    titulo: "Direito à inclusão escolar",
-    resumo:
-      "A criança tem direito ao acesso à educação e à participação no ambiente escolar sem discriminação.",
-    descricao:
-      "A educação inclusiva busca garantir que crianças com diferentes necessidades tenham acesso à escola e possam participar das atividades educacionais com respeito às suas características e necessidades individuais.",
-    orientacao:
-      "Em caso de dificuldades, o responsável pode procurar a direção da escola, a Secretaria de Educação do município ou outros órgãos responsáveis pela garantia do direito à educação.",
-  },
-  {
-    id: 2,
-    categoria: "Educação",
-    titulo: "Atendimento educacional especializado",
-    resumo:
-      "Dependendo das necessidades da criança, pode existir acesso a apoio educacional especializado.",
-    descricao:
-      "O atendimento educacional especializado pode complementar o ensino regular, oferecendo recursos, estratégias e apoio relacionados às necessidades educacionais da criança.",
-    orientacao:
-      "O responsável pode conversar com a equipe pedagógica da escola para entender quais recursos e atendimentos estão disponíveis na rede de ensino.",
-  },
-  {
-    id: 3,
-    categoria: "Saúde",
-    titulo: "Acesso aos serviços de saúde",
-    resumo:
-      "Crianças têm direito ao atendimento de saúde e ao acompanhamento necessário conforme suas necessidades.",
-    descricao:
-      "O acesso à saúde pode envolver consultas, acompanhamento profissional, exames, tratamentos e outros serviços disponíveis na rede pública ou privada, conforme cada situação.",
-    orientacao:
-      "Na rede pública, o responsável pode procurar uma Unidade Básica de Saúde para receber orientação sobre os serviços disponíveis e os encaminhamentos necessários.",
-  },
-  {
-    id: 4,
-    categoria: "Benefícios",
-    titulo: "Benefício de Prestação Continuada",
-    resumo:
-      "Em determinadas situações, pessoas com deficiência e famílias de baixa renda podem ter direito ao BPC.",
-    descricao:
-      "O Benefício de Prestação Continuada, conhecido como BPC, é um benefício assistencial previsto na legislação brasileira. A concessão depende do cumprimento dos critérios estabelecidos e da avaliação da situação do requerente.",
-    orientacao:
-      "Para verificar os critérios atualizados e realizar solicitações, o responsável deve consultar os canais oficiais do Governo Federal, do INSS ou procurar o CRAS do município.",
-  },
-  {
-    id: 5,
-    categoria: "Assistência",
-    titulo: "Acompanhamento pelo CRAS",
-    resumo:
-      "Famílias podem procurar o CRAS para obter informações sobre serviços, programas e benefícios sociais.",
-    descricao:
-      "O Centro de Referência de Assistência Social atua no atendimento e orientação de famílias, oferecendo informações sobre benefícios, programas sociais e serviços disponíveis no território.",
-    orientacao:
-      "Procure o CRAS responsável pela região onde a família mora para verificar quais serviços e programas estão disponíveis.",
-  },
-  {
-    id: 6,
-    categoria: "Proteção",
-    titulo: "Proteção contra discriminação",
-    resumo:
-      "A criança deve ser respeitada e protegida contra situações de discriminação e exclusão.",
-    descricao:
-      "A legislação brasileira estabelece princípios de igualdade, dignidade e proteção dos direitos das crianças e das pessoas com deficiência. Situações discriminatórias podem ser denunciadas e encaminhadas aos órgãos responsáveis.",
-    orientacao:
-      "Dependendo da situação, o responsável pode buscar orientação em órgãos públicos, serviços de assistência social, Ministério Público, Defensoria Pública ou outros canais oficiais.",
-  },
-];
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").replace(/\/$/, "");
 
 const categoriasBiblioteca = [
   "Todas",
@@ -168,6 +44,10 @@ const categoriasDireitos = [
 
 export default function BibliotecaPage() {
   const [aba, setAba] = useState<Aba>("biblioteca");
+  const [artigos, setArtigos] = useState<Artigo[]>([]);
+  const [direitos, setDireitos] = useState<Direito[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState("");
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState("Todas");
 
@@ -186,6 +66,48 @@ export default function BibliotecaPage() {
   const [favoritosDireitos, setFavoritosDireitos] = useState<
     number[]
   >([]);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("aba") === "direitos") {
+      setAba("direitos");
+      setCategoria("Todos");
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function carregarConteudos() {
+      setCarregando(true);
+      setErro("");
+      try {
+        const [respostaArtigos, respostaDireitos] = await Promise.all([
+          fetch(`${API_URL}/artigos`, { signal: controller.signal, cache: "no-store" }),
+          fetch(`${API_URL}/direitos`, { signal: controller.signal, cache: "no-store" }),
+        ]);
+        if (!respostaArtigos.ok || !respostaDireitos.ok) {
+          throw new Error("Não foi possível carregar os conteúdos.");
+        }
+        const [dadosArtigos, dadosDireitos]: [unknown, unknown] = await Promise.all([
+          respostaArtigos.json(), respostaDireitos.json(),
+        ]);
+        if (!Array.isArray(dadosArtigos) || !Array.isArray(dadosDireitos)) {
+          throw new Error("A API retornou um formato inesperado.");
+        }
+        if (!controller.signal.aborted) {
+          setArtigos(dadosArtigos as Artigo[]);
+          setDireitos(dadosDireitos as Direito[]);
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setErro(error instanceof Error ? error.message : "Erro ao carregar conteúdos.");
+        }
+      } finally {
+        if (!controller.signal.aborted) setCarregando(false);
+      }
+    }
+    void carregarConteudos();
+    return () => controller.abort();
+  }, []);
 
   function mudarAba(novaAba: Aba) {
     setAba(novaAba);
@@ -224,7 +146,7 @@ export default function BibliotecaPage() {
 
       return combinaBusca && combinaCategoria;
     });
-  }, [busca, categoria]);
+  }, [busca, categoria, artigos]);
 
   const direitosFiltrados = useMemo(() => {
     const termo = busca.toLowerCase().trim();
@@ -242,7 +164,7 @@ export default function BibliotecaPage() {
 
       return combinaBusca && combinaCategoria;
     });
-  }, [busca, categoria]);
+  }, [busca, categoria, direitos]);
 
   const artigoAberto = artigos.find(
     (artigo) => artigo.id === artigoAbertoId
@@ -474,7 +396,14 @@ export default function BibliotecaPage() {
               </p>
             </div>
 
-            {quantidadeResultados === 0 ? (
+            {carregando ? (
+              <p role="status" className="rounded-[28px] bg-white p-8 text-sm text-[#718086]">Carregando conteúdos...</p>
+            ) : erro ? (
+              <div role="alert" className="rounded-[28px] border border-[#EBCFC7] bg-white p-8">
+                <h3 className="font-extrabold text-[#C36851]">Não foi possível carregar a Biblioteca</h3>
+                <p className="mt-2 text-sm text-[#718086]">{erro} Verifique a conexão e a disponibilidade da API.</p>
+              </div>
+            ) : quantidadeResultados === 0 ? (
               <div className="rounded-[28px] border border-dashed border-[#DAD3CC] bg-white/60 p-10 text-center">
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[18px] bg-[#E7F0F4] text-xl text-[#7FA2B8]">
                   ⌕
