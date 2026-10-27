@@ -37,7 +37,7 @@ const links = [
     icone: "✚",
   },
   {
-    nome: "Conteúdos",
+    nome: "Biblioteca",
     href: "/biblioteca",
     icone: "▤",
   },
