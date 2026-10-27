@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Sidebar from "../../../components/Sidebar";
 
 type Medicamento = {
-  id: number;
+  id: number | string;
   nome: string;
   dose: string;
   horario: string;
@@ -13,12 +13,13 @@ type Medicamento = {
 };
 
 type Refeicao = {
-  id: number;
+  id: number | string;
   nome: string;
   tipo: string;
   horario: string;
   descricao: string;
   observacoes: string;
+  restricoes: string;
 };
 
 const tiposRefeicao = [
@@ -51,24 +52,7 @@ export default function CuidadosPage() {
   const [observacoesMedicamento, setObservacoesMedicamento] =
     useState("");
 
-  const [medicamentos, setMedicamentos] = useState<Medicamento[]>([
-    {
-      id: 1,
-      nome: "Medicamento exemplo",
-      dose: "5 ml",
-      horario: "08:00",
-      frequencia: "Todos os dias",
-      observacoes: "Administrar após o café da manhã.",
-    },
-    {
-      id: 2,
-      nome: "Medicamento noturno",
-      dose: "1 comprimido",
-      horario: "20:00",
-      frequencia: "Todos os dias",
-      observacoes: "",
-    },
-  ]);
+  const [medicamentos, setMedicamentos] = useState<Medicamento[]>([]);
 
   /* ======================================================
      ALIMENTAÇÃO
@@ -87,32 +71,59 @@ export default function CuidadosPage() {
   const [descricaoRefeicao, setDescricaoRefeicao] = useState("");
   const [observacoesRefeicao, setObservacoesRefeicao] = useState("");
 
-  const [refeicoes, setRefeicoes] = useState<Refeicao[]>([
-    {
-      id: 1,
-      nome: "Café da manhã",
-      tipo: "Café da manhã",
-      horario: "08:00",
-      descricao: "Pão, fruta e leite.",
-      observacoes: "Evitar alimentos com muito açúcar.",
-    },
-    {
-      id: 2,
-      nome: "Almoço",
-      tipo: "Almoço",
-      horario: "12:00",
-      descricao: "Arroz, feijão, proteína e legumes.",
-      observacoes: "",
-    },
-    {
-      id: 3,
-      nome: "Lanche da tarde",
-      tipo: "Lanche da tarde",
-      horario: "16:00",
-      descricao: "Fruta, iogurte ou lanche leve.",
-      observacoes: "",
-    },
-  ]);
+  const [refeicoes, setRefeicoes] = useState<Refeicao[]>([]);
+  const [restricoesRefeicao, setRestricoesRefeicao] = useState("");
+  const [carregando, setCarregando] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  // Contrato provisório: confirmar rotas e autenticação com o backend.
+  const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").replace(/\/$/, "");
+
+  async function requisicao<T>(rota: string, opcoes?: RequestInit): Promise<T> {
+    const resposta = await fetch(`${apiUrl}${rota}`, {
+      ...opcoes,
+      headers: { "Content-Type": "application/json", ...opcoes?.headers },
+      cache: "no-store",
+    });
+    if (!resposta.ok) throw new Error(`Erro ${resposta.status} ao acessar ${rota}`);
+    if (resposta.status === 204) return undefined as T;
+    return resposta.json() as Promise<T>;
+  }
+
+  async function carregarCuidados() {
+    setCarregando(true);
+    setErro("");
+    try {
+      const [listaMedicamentos, listaRefeicoes] = await Promise.all([
+        requisicao<Medicamento[]>("/medicamentos"),
+        requisicao<Refeicao[]>("/refeicoes"),
+      ]);
+      setMedicamentos(listaMedicamentos);
+      setRefeicoes(listaRefeicoes.map((r) => ({ ...r, restricoes: r.restricoes || "" })));
+    } catch {
+      setErro("Não foi possível carregar os cuidados. Verifique a conexão e a API.");
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => {
+    let ativo = true;
+    Promise.all([
+      requisicao<Medicamento[]>("/medicamentos"),
+      requisicao<Refeicao[]>("/refeicoes"),
+    ]).then(([m, r]) => {
+      if (!ativo) return;
+      setMedicamentos(m);
+      setRefeicoes(r.map((item) => ({ ...item, restricoes: item.restricoes || "" })));
+    }).catch(() => {
+      if (ativo) setErro("Não foi possível carregar os cuidados. Verifique a conexão e a API.");
+    }).finally(() => { if (ativo) setCarregando(false); });
+    return () => { ativo = false; };
+  // A URL é uma configuração de ambiente estável durante a sessão.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ======================================================
      FUNÇÕES DOS MEDICAMENTOS
@@ -138,49 +149,23 @@ export default function CuidadosPage() {
     setFormularioMedicamentoAberto(false);
   }
 
-  function salvarMedicamento() {
-    if (
-      !nomeMedicamento ||
-      !doseMedicamento ||
-      !horarioMedicamento
-    ) {
-      alert("Preencha o nome, a dose e o horário.");
-      return;
+  async function salvarMedicamento() {
+    if (!nomeMedicamento.trim() || !doseMedicamento.trim() || !horarioMedicamento) {
+      setErro("Preencha o nome, a dose e o horário do medicamento."); return;
     }
-
-    if (idMedicamentoEditando !== null) {
-      setMedicamentos((listaAtual) =>
-        listaAtual.map((medicamento) =>
-          medicamento.id === idMedicamentoEditando
-            ? {
-                ...medicamento,
-                nome: nomeMedicamento,
-                dose: doseMedicamento,
-                horario: horarioMedicamento,
-                frequencia: frequenciaMedicamento,
-                observacoes: observacoesMedicamento,
-              }
-            : medicamento
-        )
-      );
-    } else {
-      const novoMedicamento: Medicamento = {
-        id: Date.now(),
-        nome: nomeMedicamento,
-        dose: doseMedicamento,
-        horario: horarioMedicamento,
-        frequencia: frequenciaMedicamento,
-        observacoes: observacoesMedicamento,
-      };
-
-      setMedicamentos((listaAtual) => [
-        ...listaAtual,
-        novoMedicamento,
-      ]);
-    }
-
-    limparFormularioMedicamento();
-    setFormularioMedicamentoAberto(false);
+    setSalvando(true); setErro("");
+    try {
+      const dados = { nome: nomeMedicamento.trim(), dose: doseMedicamento.trim(),
+        horario: horarioMedicamento, frequencia: frequenciaMedicamento,
+        observacoes: observacoesMedicamento.trim() };
+      const editando = idMedicamentoEditando !== null;
+      await requisicao(`/medicamentos${editando ? `/${idMedicamentoEditando}` : ""}`, {
+        method: editando ? "PATCH" : "POST", body: JSON.stringify(dados),
+      });
+      fecharFormularioMedicamento();
+      await carregarCuidados();
+    } catch { setErro("Não foi possível salvar o medicamento. Tente novamente."); }
+    finally { setSalvando(false); }
   }
 
   function editarMedicamento(medicamento: Medicamento) {
@@ -200,18 +185,18 @@ export default function CuidadosPage() {
     });
   }
 
-  function excluirMedicamento(id: number) {
+  async function excluirMedicamento(id: number | string) {
     const confirmar = window.confirm(
       "Deseja realmente excluir este medicamento?"
     );
 
     if (!confirmar) return;
 
-    setMedicamentos((listaAtual) =>
-      listaAtual.filter(
-        (medicamento) => medicamento.id !== id
-      )
-    );
+    setErro("");
+    try {
+      await requisicao(`/medicamentos/${id}`, { method: "DELETE" });
+      await carregarCuidados();
+    } catch { setErro("Não foi possível excluir o medicamento."); }
   }
 
   /* ======================================================
@@ -224,6 +209,7 @@ export default function CuidadosPage() {
     setHorarioRefeicao("");
     setDescricaoRefeicao("");
     setObservacoesRefeicao("");
+    setRestricoesRefeicao("");
     setIdRefeicaoEditando(null);
   }
 
@@ -238,51 +224,23 @@ export default function CuidadosPage() {
     setFormularioRefeicaoAberto(false);
   }
 
-  function salvarRefeicao() {
-    if (
-      !nomeRefeicao ||
-      !horarioRefeicao ||
-      !descricaoRefeicao
-    ) {
-      alert(
-        "Preencha o nome da refeição, o horário e os alimentos/orientações."
-      );
-      return;
+  async function salvarRefeicao() {
+    if (!nomeRefeicao.trim() || !horarioRefeicao || !descricaoRefeicao.trim()) {
+      setErro("Preencha o nome, o horário e os alimentos/orientações."); return;
     }
-
-    if (idRefeicaoEditando !== null) {
-      setRefeicoes((listaAtual) =>
-        listaAtual.map((refeicao) =>
-          refeicao.id === idRefeicaoEditando
-            ? {
-                ...refeicao,
-                nome: nomeRefeicao,
-                tipo: tipoRefeicao,
-                horario: horarioRefeicao,
-                descricao: descricaoRefeicao,
-                observacoes: observacoesRefeicao,
-              }
-            : refeicao
-        )
-      );
-    } else {
-      const novaRefeicao: Refeicao = {
-        id: Date.now(),
-        nome: nomeRefeicao,
-        tipo: tipoRefeicao,
-        horario: horarioRefeicao,
-        descricao: descricaoRefeicao,
-        observacoes: observacoesRefeicao,
-      };
-
-      setRefeicoes((listaAtual) => [
-        ...listaAtual,
-        novaRefeicao,
-      ]);
-    }
-
-    limparFormularioRefeicao();
-    setFormularioRefeicaoAberto(false);
+    setSalvando(true); setErro("");
+    try {
+      const dados = { nome: nomeRefeicao.trim(), tipo: tipoRefeicao,
+        horario: horarioRefeicao, descricao: descricaoRefeicao.trim(),
+        observacoes: observacoesRefeicao.trim(), restricoes: restricoesRefeicao.trim() };
+      const editando = idRefeicaoEditando !== null;
+      await requisicao(`/refeicoes${editando ? `/${idRefeicaoEditando}` : ""}`, {
+        method: editando ? "PATCH" : "POST", body: JSON.stringify(dados),
+      });
+      fecharFormularioRefeicao();
+      await carregarCuidados();
+    } catch { setErro("Não foi possível salvar a refeição. Tente novamente."); }
+    finally { setSalvando(false); }
   }
 
   function editarRefeicao(refeicao: Refeicao) {
@@ -292,6 +250,7 @@ export default function CuidadosPage() {
     setHorarioRefeicao(refeicao.horario);
     setDescricaoRefeicao(refeicao.descricao);
     setObservacoesRefeicao(refeicao.observacoes);
+    setRestricoesRefeicao(refeicao.restricoes || "");
 
     setFormularioMedicamentoAberto(false);
     setFormularioRefeicaoAberto(true);
@@ -302,16 +261,18 @@ export default function CuidadosPage() {
     });
   }
 
-  function excluirRefeicao(id: number) {
+  async function excluirRefeicao(id: number | string) {
     const confirmar = window.confirm(
       "Deseja realmente excluir esta refeição?"
     );
 
     if (!confirmar) return;
 
-    setRefeicoes((listaAtual) =>
-      listaAtual.filter((refeicao) => refeicao.id !== id)
-    );
+    setErro("");
+    try {
+      await requisicao(`/refeicoes/${id}`, { method: "DELETE" });
+      await carregarCuidados();
+    } catch { setErro("Não foi possível excluir a refeição."); }
   }
 
   /* ======================================================
@@ -330,7 +291,10 @@ export default function CuidadosPage() {
     );
   }, [refeicoes]);
 
-  const proximoMedicamento = medicamentosOrdenados[0];
+  const agora = new Date();
+  const horarioAtual = `${String(agora.getHours()).padStart(2, "0")}:${String(agora.getMinutes()).padStart(2, "0")}`;
+  const proximoMedicamento = medicamentosOrdenados.find((m) => m.horario >= horarioAtual);
+
 
   return (
     <div className="min-h-screen bg-[#F8F5F1] text-[#2C3E44] md:flex">
@@ -358,6 +322,13 @@ export default function CuidadosPage() {
               da criança em um só lugar.
             </p>
           </header>
+
+          {erro && (
+            <div role="alert" className="mb-5 rounded-2xl border border-[#EBC8BE] bg-[#FFF1EC] p-4 text-sm text-[#A85B48]">
+              {erro} <button type="button" onClick={carregarCuidados} className="ml-2 font-bold underline">Tentar novamente</button>
+            </div>
+          )}
+          {carregando && <p role="status" className="mb-5 text-sm text-[#718187]">Carregando cuidados...</p>}
 
           {/* DESTAQUES */}
 
@@ -534,9 +505,10 @@ export default function CuidadosPage() {
                   <button
                     type="button"
                     onClick={salvarMedicamento}
+                    disabled={salvando}
                     className="rounded-full bg-[#D97D64] px-6 py-3 text-sm font-extrabold text-white"
                   >
-                    {idMedicamentoEditando !== null
+                    {salvando ? "Salvando..." : idMedicamentoEditando !== null
                       ? "Salvar alterações"
                       : "Salvar medicamento"}
                   </button>
@@ -656,13 +628,27 @@ export default function CuidadosPage() {
                   />
                 </div>
 
+                <div className="mt-5">
+                  <label className="mb-2 block text-sm font-extrabold text-[#465B62]">
+                    Restrições alimentares / alimentos a evitar
+                  </label>
+                  <textarea
+                    value={restricoesRefeicao}
+                    onChange={(e) => setRestricoesRefeicao(e.target.value)}
+                    rows={3}
+                    placeholder="Registre apenas restrições indicadas pelos profissionais responsáveis."
+                    className="w-full resize-none rounded-[18px] border border-[#DED8D2] bg-[#FCFBF9] px-4 py-3.5 text-sm outline-none focus:border-[#8FBC8F]"
+                  />
+                </div>
+
                 <div className="mt-6 flex flex-wrap gap-3">
                   <button
                     type="button"
                     onClick={salvarRefeicao}
+                    disabled={salvando}
                     className="rounded-full bg-[#7EAE7E] px-6 py-3 text-sm font-extrabold text-white"
                   >
-                    {idRefeicaoEditando !== null
+                    {salvando ? "Salvando..." : idRefeicaoEditando !== null
                       ? "Salvar alterações"
                       : "Salvar refeição"}
                   </button>
@@ -739,6 +725,13 @@ export default function CuidadosPage() {
                           <p className="mt-2 text-sm leading-6 text-[#718078]">
                             {refeicao.descricao}
                           </p>
+
+                          {refeicao.restricoes && (
+                            <div className="mt-3 rounded-[14px] bg-[#FFF1EC] p-3">
+                              <p className="text-[10px] font-extrabold text-[#B65F49]">RESTRIÇÕES ALIMENTARES</p>
+                              <p className="mt-1 text-xs leading-5 text-[#747E76]">{refeicao.restricoes}</p>
+                            </div>
+                          )}
 
                           {refeicao.observacoes && (
                             <div className="mt-3 rounded-[14px] bg-[#FAF8F5] p-3">
